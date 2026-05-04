@@ -91,7 +91,6 @@ def extraer_datos_pdf(ruta_archivo):
             texto = pagina.extract_text() 
             if not texto or len(texto.strip()) < 20:
                 try:
-                    # <-- NUEVO: Bajar a 100 para ahorrar RAM
                     img = pagina.to_image(resolution=100).original 
                     img_np = np.array(img)
                     resultado, _ = lector_ocr(img_np)
@@ -99,10 +98,19 @@ def extraer_datos_pdf(ruta_archivo):
                         texto = "\n".join([line[1] for line in resultado])
                     else:
                         texto = ""
+                        
+                    # --- NUEVO: DESTRUCCIÓN AGRESIVA DE MEMORIA ---
+                    del img
+                    del img_np
+                    del resultado
+                    
                 except Exception as e:
                     print(f"Error OCR: {e}")
                     texto = ""
             if texto: texto_completo += texto + "\n"
+            
+            # --- Forzamos limpieza tras cada página leída ---
+            gc.collect()
 
     datos = {
         "Archivo": os.path.basename(ruta_archivo), "Ruc_DNI": "", "Poliza_Contrato": "",
@@ -110,6 +118,7 @@ def extraer_datos_pdf(ruta_archivo):
         "Prima_Total": "", "Fecha_pago": ""
     }
     texto_upper = texto_completo.upper()
+
 
     if "PROTECTA" in texto_upper:
         datos["Ruc_DNI"] = buscar_numero_largo(r"DNI/RUC:|RUC", texto_completo, 8)
