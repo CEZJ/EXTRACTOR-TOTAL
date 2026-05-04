@@ -14,8 +14,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 print("Cargando librerias de Inteligencia Artificial... (EasyOCR)")
-import easyocr
-lector_ocr = easyocr.Reader(['es'], gpu=False, verbose=False)
+
 
 MESES_TEXTO = {
     'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
