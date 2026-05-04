@@ -88,7 +88,7 @@ export default function App() {
         <div className="z-10 flex flex-col items-center">
           <Cpu className="w-20 h-20 text-cyan-400 mb-6 drop-shadow-[0_0_15px_rgba(34,211,238,0.8)] animate-bounce" />
           <h1 className="text-4xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-600 tracking-[0.2em] mb-4 text-center">
-            BIENVENIDO A C.Z.A.R Engine
+            BIENVENIDO A C.Z.A.R 
           </h1>
           <p className="text-cyan-500/70 tracking-[0.3em] text-sm md:text-base mb-12 uppercase text-center max-w-lg">
             Sistema Inteligente de Extracción de Datos
@@ -134,7 +134,7 @@ export default function App() {
             <Database className="text-cyan-400 w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-[0.15em] text-cyan-50 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]"> C.E.Z.J // CORE</h1>
+            <h1 className="text-2xl font-bold tracking-[0.15em] text-cyan-50 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]"> C.Z.A.R  // CORE</h1>
             <p className="text-xs text-cyan-500 tracking-widest mt-1 uppercase">Módulo de Ingesta Documental</p>
           </div>
         </div>
