@@ -54,7 +54,9 @@ export default function App() {
     setExtractedData([]);
 
     const archivosArray = Array.from(archivosSeleccionados); 
-    const tamañoLote = 5; // Render procesará de 5 en 5
+    
+    // <-- NUEVO: LOTE DE 1 (Máxima seguridad para la RAM de Render)
+    const tamañoLote = 1; 
     let todosLosResultados = [];
     
     try {

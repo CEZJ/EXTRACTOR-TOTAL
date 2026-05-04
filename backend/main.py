@@ -4,6 +4,7 @@ import shutil
 import pdfplumber
 import pandas as pd
 import numpy as np
+import gc # <-- NUEVO: Recolector de basura para limpiar RAM
 from fastapi.responses import FileResponse
 from typing import List, Dict, Any
 from datetime import datetime
@@ -85,14 +86,13 @@ def formatear_dolares(monto, texto_completo, palabra_clave):
 def extraer_datos_pdf(ruta_archivo):
     texto_completo = ""
     with pdfplumber.open(ruta_archivo) as pdf:
-        # OPTIMIZACIÓN DE VELOCIDAD: Leemos solo las 3 primeras páginas
         paginas_a_procesar = pdf.pages[:3] 
         for pagina in paginas_a_procesar:
             texto = pagina.extract_text() 
-            # MOTOR LIGERO (RAPIDOCR) CON IMÁGENES REDUCIDAS
             if not texto or len(texto.strip()) < 20:
                 try:
-                    img = pagina.to_image(resolution=150).original
+                    # <-- NUEVO: Bajar a 100 para ahorrar RAM
+                    img = pagina.to_image(resolution=100).original 
                     img_np = np.array(img)
                     resultado, _ = lector_ocr(img_np)
                     if resultado:
@@ -445,8 +445,10 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
         finally:
             if os.path.exists(ruta_archivo):
                 os.remove(ruta_archivo)
+            
+            # <-- NUEVO: ELIMINA LA BASURA DE LA RAM DESPUÉS DE CADA PDF
+            gc.collect()
 
-    # Devolvemos solo la data JSON (No gastamos recursos en crear Excels intermedios)
     return {"status": "success", "mensaje": "Lote procesado", "datos": resultados}
 
 
