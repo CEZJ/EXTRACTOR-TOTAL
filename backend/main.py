@@ -13,8 +13,9 @@ from openpyxl.styles import PatternFill, Font, Alignment
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-print("Cargando librerias de Inteligencia Artificial... (EasyOCR)")
-
+print("Cargando motor OCR ligero... (RapidOCR/ONNX)")
+from rapidocr_onnxruntime import RapidOCR
+lector_ocr = RapidOCR()
 
 MESES_TEXTO = {
     'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
@@ -23,7 +24,7 @@ MESES_TEXTO = {
 }
 
 # ==========================================
-# FUNCIONES AUXILIARES (TUS FUNCIONES INTACTAS)
+# FUNCIONES AUXILIARES
 # ==========================================
 def limpiar_fecha(fecha_str):
     if not fecha_str: return ""
@@ -82,12 +83,18 @@ def extraer_datos_pdf(ruta_archivo):
         paginas_a_procesar = pdf.pages[:10] 
         for pagina in paginas_a_procesar:
             texto = pagina.extract_text() 
+            # SI NO HAY TEXTO DIGITAL, ENTRA EL MOTOR LIGERO (RAPIDOCR)
             if not texto or len(texto.strip()) < 20:
                 try:
                     img = pagina.to_image(resolution=200).original
                     img_np = np.array(img)
-                    texto = "\n".join(lector_ocr.readtext(img_np, detail=0))
-                except Exception:
+                    resultado, _ = lector_ocr(img_np)
+                    if resultado:
+                        texto = "\n".join([line[1] for line in resultado])
+                    else:
+                        texto = ""
+                except Exception as e:
+                    print(f"Error OCR: {e}")
                     texto = ""
             if texto: texto_completo += texto + "\n"
 
@@ -333,14 +340,7 @@ def aplicar_formato_excel(ruta_excel):
     wb.save(ruta_excel)
 
 def generar_trama_masiva(resultados, ruta_directorio):
-    directorio_script = os.path.dirname(os.path.abspath(__file__))
-    ruta_plantilla = os.path.join(directorio_script, "trama_carga_masiva.xlsx")
-    
-    if not os.path.exists(ruta_plantilla): 
-        print(f"\n❌ [ERROR CRÍTICO]: No encuentro tu plantilla base en: {ruta_plantilla}")
-        print("Asegúrate de tener el archivo 'trama_carga_masiva.xlsx' en esa carpeta.\n")
-        return
-    # 1. Creamos el Excel desde cero
+    # ¡BOMBA DESACTIVADA! Creamos el Excel desde cero sin buscar plantillas.
     wb = Workbook()
 
     # --- SELLO INVISIBLE DE AUTORÍA ---
@@ -350,7 +350,7 @@ def generar_trama_masiva(resultados, ruta_directorio):
     ws = wb.active
     ws.title = "TRAMA"
     
-    # 2. LOS ENCABEZADOS EXACTOS DE TU PLANTILLA
+    # LOS ENCABEZADOS EXACTOS
     cabeceras = [
         "POLIZA_CERTF", "AVISO_COB_NUM_PRIMERA_CUOTA", "TIPO_DOC", "TIPO_PAGO", 
         "AVISO_VIGENCIA_INICIO", "AVISO_VIGENCIA_FIN", "FECHA_EMISION", 
@@ -360,7 +360,7 @@ def generar_trama_masiva(resultados, ruta_directorio):
     ]
     ws.append(cabeceras)
     
-    # Damos formato elegante a tu cabecera
+    # Formato a tu cabecera
     color_cabecera = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
     fuente_blanca = Font(color="FFFFFF", bold=True)
     for celda in ws[1]:
@@ -373,7 +373,7 @@ def generar_trama_masiva(resultados, ruta_directorio):
         try: return datetime.strptime(fecha_str.replace('-', '/'), "%d/%m/%Y")
         except ValueError: return None
 
-    # 3. Rellenamos con los datos y fórmulas
+    # Rellenamos con los datos y fórmulas
     fila = 2 
     for datos in resultados:
         ws[f'A{fila}'] = datos.get("Poliza_Contrato", "")
@@ -404,20 +404,18 @@ def generar_trama_masiva(resultados, ruta_directorio):
         ws[f'P{fila}'] = f'=UPPER(TEXT(E{fila}, "MMMM"))'
         fila += 1
 
-    # Ajustar el ancho de las columnas automáticamente para que no se vea amontonado
     for col in ws.columns:
         max_length = max((len(str(cell.value)) for cell in col if cell.value), default=0)
         ws.column_dimensions[col[0].column_letter].width = max_length + 2
 
-    # 4. Guardamos la trama final en tu carpeta de salidas
+    # Guardamos la trama final en la ruta temporal (/tmp)
     wb.save(os.path.join(ruta_directorio, "trama_carga_masiva_FINAL.xlsx"))
 
 # ==========================================
 # INICIALIZACIÓN DE LA API FASTAPI
 # ==========================================
-app = FastAPI(title="Extractor de PDFs API")
+app = FastAPI(title="C.Z.A.R. Engine Extractor API")
 
-# Configuración de CORS para conectar con React
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -428,14 +426,14 @@ app.add_middleware(
 
 @app.post("/procesar-pdfs/")
 async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
-    os.makedirs("temp_pdfs", exist_ok=True)
-    directorio_base = os.path.dirname(os.path.abspath(__file__))
+    # Usamos /tmp para que Render nos deje guardar los PDFs temporales
+    ruta_temp_pdfs = "/tmp/pdfs"
+    os.makedirs(ruta_temp_pdfs, exist_ok=True)
     
     resultados = []
     
-    # 1. Extraer los datos de TODOS los PDFs enviados
     for file in archivos:
-        ruta_archivo = os.path.join("temp_pdfs", file.filename)
+        ruta_archivo = os.path.join(ruta_temp_pdfs, file.filename)
         with open(ruta_archivo, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
@@ -448,26 +446,22 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
             if os.path.exists(ruta_archivo):
                 os.remove(ruta_archivo)
 
-# 2. Aplicar TU LÓGICA EXACTA (Generar solo 2 archivos en carpeta aparte)
     if resultados:
+        # TODO SE GUARDA EN /tmp PARA COMPATIBILIDAD ABSOLUTA CON LA NUBE
         carpeta_resultados = "/tmp"
         
-        # Archivo 1: Reporte_Polizas.xlsx (Ahora dentro de la subcarpeta)
         df = pd.DataFrame(resultados)[[
             "Archivo", "Ruc_DNI", "Poliza_Contrato", "Documento",
             "Vigencia_Inicio", "Vigencia_Fin", "Fecha_Emision", "Prima_Total", "Fecha_pago"
         ]]
         
-        # CAMBIO AQUÍ: Usamos carpeta_resultados en lugar de directorio_base
         ruta_excel = os.path.join(carpeta_resultados, "Reporte_Polizas.xlsx")
         df.to_excel(ruta_excel, index=False)
         aplicar_formato_excel(ruta_excel)
 
-        # Archivo 2: trama_carga_masiva_FINAL.xlsx (También a la subcarpeta)
-        # CAMBIO AQUÍ: Enviamos la nueva ruta a tu función
         generar_trama_masiva(resultados, carpeta_resultados)
 
-        return {"status": "success", "mensaje": "Lote procesado. Archivos guardados en subcarpeta.", "datos": resultados}
+        return {"status": "success", "mensaje": "Lote procesado por motor neural ligero. Archivos listos.", "datos": resultados}
 
 # ==========================================
 # ENDPOINTS PARA DESCARGA DE ARCHIVOS
@@ -475,14 +469,14 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
 
 @app.get("/descargar-reporte")
 async def descargar_reporte():
-    ruta = "/tmp/Reporte_Polizas.xlsx" # Ruta directa en tmp
+    ruta = "/tmp/Reporte_Polizas.xlsx"
     if os.path.exists(ruta):
         return FileResponse(path=ruta, filename="Reporte_Polizas.xlsx")
     raise HTTPException(status_code=404, detail="No encontrado")
 
 @app.get("/descargar-trama")
 async def descargar_trama():
-    ruta = "/tmp/trama_carga_masiva_FINAL.xlsx" # Ruta directa en tmp
+    ruta = "/tmp/trama_carga_masiva_FINAL.xlsx"
     if os.path.exists(ruta):
         return FileResponse(path=ruta, filename="trama_carga_masiva_FINAL.xlsx")
     raise HTTPException(status_code=404, detail="No encontrado")
@@ -490,6 +484,5 @@ async def descargar_trama():
 if __name__ == "__main__":
     import uvicorn
     import os
-    # Esto es vital para Render
     port = int(os.environ.get("PORT", 8000)) 
     uvicorn.run(app, host="0.0.0.0", port=port)
