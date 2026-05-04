@@ -4,6 +4,7 @@ import shutil
 import pdfplumber
 import pandas as pd
 import numpy as np
+import gc
 from fastapi.responses import FileResponse
 from typing import List, Dict, Any
 from datetime import datetime
@@ -92,7 +93,7 @@ def extraer_datos_pdf(ruta_archivo):
             # MOTOR LIGERO (RAPIDOCR) CON IMÁGENES REDUCIDAS
             if not texto or len(texto.strip()) < 20:
                 try:
-                    img = pagina.to_image(resolution=150).original
+                    img = pagina.to_image(resolution=100).original
                     img_np = np.array(img)
                     resultado, _ = lector_ocr(img_np)
                     if resultado:
@@ -445,8 +446,11 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
         finally:
             if os.path.exists(ruta_archivo):
                 os.remove(ruta_archivo)
+            
+            # --- NUEVO: VACIAR LA RAM A LA FUERZA ---
+            gc.collect() 
 
-    # Devolvemos solo la data JSON (No gastamos recursos en crear Excels intermedios)
+    # Devolvemos solo la data JSON
     return {"status": "success", "mensaje": "Lote procesado", "datos": resultados}
 
 
