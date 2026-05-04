@@ -450,9 +450,7 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
 
 # 2. Aplicar TU LÓGICA EXACTA (Generar solo 2 archivos en carpeta aparte)
     if resultados:
-        # --- NUEVO: Creamos una carpeta para que no se mezcle con tu código ---
-        carpeta_resultados = os.path.join(directorio_base, "Archivos_Excel")
-        os.makedirs(carpeta_resultados, exist_ok=True)
+        carpeta_resultados = "/tmp"
         
         # Archivo 1: Reporte_Polizas.xlsx (Ahora dentro de la subcarpeta)
         df = pd.DataFrame(resultados)[[
@@ -477,18 +475,14 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
 
 @app.get("/descargar-reporte")
 async def descargar_reporte():
-    directorio_base = os.path.dirname(os.path.abspath(__file__))
-    # Apuntamos a la subcarpeta "Archivos_Excel"
-    ruta = os.path.join(directorio_base, "Archivos_Excel", "Reporte_Polizas.xlsx")
+    ruta = "/tmp/Reporte_Polizas.xlsx" # Ruta directa en tmp
     if os.path.exists(ruta):
         return FileResponse(path=ruta, filename="Reporte_Polizas.xlsx")
     raise HTTPException(status_code=404, detail="No encontrado")
 
 @app.get("/descargar-trama")
 async def descargar_trama():
-    directorio_base = os.path.dirname(os.path.abspath(__file__))
-    # Apuntamos a la subcarpeta "Archivos_Excel"
-    ruta = os.path.join(directorio_base, "Archivos_Excel", "trama_carga_masiva_FINAL.xlsx")
+    ruta = "/tmp/trama_carga_masiva_FINAL.xlsx" # Ruta directa en tmp
     if os.path.exists(ruta):
         return FileResponse(path=ruta, filename="trama_carga_masiva_FINAL.xlsx")
     raise HTTPException(status_code=404, detail="No encontrado")
