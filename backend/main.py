@@ -497,5 +497,6 @@ async def descargar_trama():
 if __name__ == "__main__":
     import uvicorn
     import os
-    port = int(os.environ.get("PORT", 8000))
+    # Esto es vital para Render
+    port = int(os.environ.get("PORT", 8000)) 
     uvicorn.run(app, host="0.0.0.0", port=port)
