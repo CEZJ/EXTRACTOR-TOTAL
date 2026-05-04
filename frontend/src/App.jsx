@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { UploadCloud, FileText, CheckCircle2, Terminal, FileSpreadsheet, Activity, ChevronRight, Download, Cpu, Database, Zap } from 'lucide-react';
 
 export default function App() {
-  // --- ESTADOS DE LA LÓGICA ---
+  // --- ESTADOS DE LA LÓGICA (INTACTOS) ---
   const [status, setStatus] = useState('idle');
   const [progress, setProgress] = useState(0);
   const [logs, setLogs] = useState([]);
@@ -10,7 +10,7 @@ export default function App() {
   const consoleEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // --- ESTADO: PANTALLA DE BIENVENIDA ---
+  // --- NUEVO ESTADO: PANTALLA DE BIENVENIDA ---
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
@@ -24,14 +24,14 @@ export default function App() {
   const descargarExcels = () => {
     addLog('system', 'Iniciando descargas seguras...');
     
-    // Descarga 1: Reporte
+    // Descarga 1
     const link1 = document.createElement('a');
     link1.href = "https://extractor-total-2.onrender.com/descargar-reporte";
     document.body.appendChild(link1);
     link1.click();
     document.body.removeChild(link1);
 
-    // Esperamos 2 segundos para la Descarga 2: Trama
+    // Esperamos 2 segundos para la Descarga 2
     setTimeout(() => {
         const link2 = document.createElement('a');
         link2.href = "https://extractor-total-2.onrender.com/descargar-trama";
@@ -40,87 +40,38 @@ export default function App() {
         document.body.removeChild(link2);
         addLog('success', 'Descargas completadas.');
     }, 2000); 
-  };
+};
 
-  // ==========================================
-  // LÓGICA MAESTRA: PROCESAMIENTO POR LOTES
-  // ==========================================
-  const procesarArchivos = async (archivosSeleccionados) => {
-    if (!archivosSeleccionados || archivosSeleccionados.length === 0) return;
-    
-    setStatus('processing'); 
-    setProgress(5); 
-    setLogs([]); 
-    setExtractedData([]);
+  const procesarArchivos = async (archivos) => {
+    if (!archivos || archivos.length === 0) return;
+    setStatus('processing'); setProgress(20); setLogs([]); setExtractedData([]);
 
-    const archivosArray = Array.from(archivosSeleccionados); 
-    const tamañoLote = 1; // Render procesará de 1 en 1
-    let todosLosResultados = [];
-    
+    addLog('system', `INICIALIZANDO SECUENCIA. Lote detectado: ${archivos.length} archivo(s)...`);
+    const formData = new FormData();
+    for (let i = 0; i < archivos.length; i++) {
+      formData.append("archivos", archivos[i]);
+      addLog('info', `[CARGANDO] > ${archivos[i].name}`);
+    }
+
     try {
-        addLog('system', `INICIANDO INGESTA MASIVA. Total: ${archivosArray.length} archivo(s)...`);
-        
-        // 1. CICLO DE LOTES
-        for (let i = 0; i < archivosArray.length; i += tamañoLote) {
-            const lote = archivosArray.slice(i, i + tamañoLote);
-            const formData = new FormData();
-            
-            lote.forEach(file => {
-                formData.append("archivos", file);
-                addLog('info', `[EN COLA] > ${file.name}`);
-            });
-            
-            const numLote = Math.floor(i / tamañoLote) + 1;
-            const totalLotes = Math.ceil(archivosArray.length / tamañoLote);
-            
-            addLog('system', `[ENVIANDO] Lote ${numLote} de ${totalLotes} al Motor Neural...`);
-
-            // Enviamos lote actual
-            const response = await fetch("https://extractor-total-2.onrender.com/procesar-pdfs/", {
-                method: "POST",
-                body: formData
-            });
-
-            if (!response.ok) throw new Error(`El servidor rechazó el lote ${numLote}`);
-            
-            const data = await response.json();
-            todosLosResultados.push(...data.datos); // Acumulamos los datos extraídos
-            
-            // Actualizamos la barra (llega máximo al 80% durante la lectura)
-            const progresoActual = Math.round(((i + lote.length) / archivosArray.length) * 80);
-            setProgress(progresoActual);
-        }
-
-        addLog('system', '[ENSAMBLANDO] Consolidando matriz maestra de datos...');
-        setProgress(90);
-
-        // 2. SOLICITUD FINAL: Generar los Excels con toda la data
-        const resFinal = await fetch("https://extractor-total-2.onrender.com/generar-excels-finales/", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ resultados: todosLosResultados })
-        });
-
-        if (!resFinal.ok) throw new Error("Error al ensamblar los archivos finales.");
-
-        addLog('success', '[STATUS: OK] Extracción Masiva 100% Finalizada.');
-        addLog('success', `[GENERADO] > Reporte_Polizas.xlsx`);
-        addLog('success', `[GENERADO] > trama_carga_masiva_FINAL.xlsx`);
-        setProgress(100);
-        
-        // Mostramos la data en la tabla de la web
-        setExtractedData(todosLosResultados.map((f, i) => ({
-            id: i, file: f['Archivo'], poliza: f['Poliza_Contrato'], doc: f['Documento'], prima: `S/ ${f['Prima_Total']}`
-        })));
-        setStatus('success');
-
-        // 3. DESCARGAMOS LOS ARCHIVOS
-        descargarExcels(); 
-
+      addLog('system', 'ENVIANDO LOTE A MOTOR NEURAL (FastAPI)...');
+      setProgress(60);
+      const response = await fetch("https://extractor-total-2.onrender.com/procesar-pdfs/", { method: "POST", body: formData });
+      if (!response.ok) throw new Error("Error en el servidor");
+      
+      const resultado = await response.json();
+      setProgress(100);
+      addLog('success', `[STATUS: OK] Extracción exitosa.`);
+      addLog('success', `[GENERADO] > Reporte_Polizas.xlsx`);
+      addLog('success', `[GENERADO] > trama_carga_masiva_FINAL.xlsx`);
+      
+      setExtractedData(resultado.datos.map((f, i) => ({
+        id: i, file: f['Archivo'], poliza: f['Poliza_Contrato'], doc: f['Documento'], prima: `S/ ${f['Prima_Total']}`
+      })));
+      setStatus('success');
     } catch (error) {
-        addLog('warning', `[ERROR CRÍTICO] ${error.message}`);
-        setStatus('error');
-        setProgress(0);
+      addLog('warning', `[ERROR] Conexión perdida con el host local.`);
+      setStatus('error');
     }
   };
 
@@ -130,6 +81,7 @@ export default function App() {
   if (showSplash) {
     return (
       <div className="h-screen w-full bg-[#030712] flex flex-col items-center justify-center relative overflow-hidden font-mono select-none">
+        {/* Fondo Tech Animado */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.05)_1px,transparent_1px)] bg-[size:30px_30px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)]"></div>
         <div className="absolute w-96 h-96 bg-cyan-600/20 rounded-full blur-[100px] animate-pulse"></div>
 
@@ -163,8 +115,10 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#020617] text-cyan-50 font-mono p-4 md:p-6 relative overflow-hidden selection:bg-cyan-500/30 selection:text-cyan-100">
       
+      {/* Fondo Grid tipo Radar */}
       <div className="fixed inset-0 pointer-events-none bg-[linear-gradient(rgba(34,211,238,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.03)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
       
+      {/* MARCA DE AGUA */}
       <div className="fixed bottom-4 right-6 flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity duration-300 z-50">
         <span className="text-[10px] tracking-[0.2em] text-cyan-500/70 uppercase">ENG.SYSTEMS //</span>
         <div className="px-2 py-1 border border-cyan-500/40 bg-cyan-950/40 flex items-center gap-1.5 shadow-[0_0_10px_rgba(34,211,238,0.2)]">
@@ -173,6 +127,7 @@ export default function App() {
         </div>
       </div>
 
+      {/* HEADER FUTURISTA */}
       <header className="max-w-7xl mx-auto mb-6 flex justify-between items-end border-b border-cyan-800/60 pb-4 relative z-10">
         <div className="flex items-center gap-4">
           <div className="bg-[#082f49]/80 p-3 border border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
@@ -194,8 +149,10 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10 mb-10">
         
+        {/* COLUMNA IZQUIERDA: CARGA DE ARCHIVOS */}
         <div className="lg:col-span-5 flex flex-col gap-6">
           <div className={`bg-[#030b17]/80 backdrop-blur-sm border ${status === 'processing' ? 'border-amber-500/50 shadow-[0_0_20px_rgba(245,158,11,0.15)]' : 'border-cyan-800/60 shadow-[0_0_15px_rgba(6,182,212,0.1)]'} p-6 relative`}>
+            {/* Esquinas decorativas tech */}
             <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-cyan-500"></div>
             <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-cyan-500"></div>
             <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-cyan-500"></div>
@@ -225,6 +182,7 @@ export default function App() {
                   <span className={status === 'processing' ? 'text-amber-400' : 'text-cyan-400'}>{progress}%</span>
                 </div>
                 
+                {/* Barra de progreso estilo Tech */}
                 <div className="w-full bg-[#020617] border border-cyan-900 h-3 mb-6 relative">
                   <div className={`h-full transition-all duration-300 relative ${status === 'processing' ? 'bg-amber-500' : 'bg-cyan-500'}`} style={{ width: `${progress}%` }}>
                      <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(0,0,0,0.2)_25%,rgba(0,0,0,0.2)_50%,transparent_50%,transparent_75%,rgba(0,0,0,0.2)_75%,rgba(0,0,0,0.2)_100%)] bg-[size:10px_10px] opacity-50"></div>
@@ -246,8 +204,10 @@ export default function App() {
           </div>
         </div>
 
+        {/* COLUMNA DERECHA: CONSOLA Y RESULTADOS */}
         <div className="lg:col-span-7 flex flex-col gap-6">
           
+          {/* TERMINAL / LOGS */}
           <div className="bg-[#030b17]/90 border border-cyan-800/60 flex flex-col h-[250px] relative">
             <div className="bg-[#020617] px-4 py-2 border-b border-cyan-800/60 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -269,6 +229,7 @@ export default function App() {
             </div>
           </div>
 
+          {/* TABLA DE RESULTADOS */}
           {status === 'success' && (
             <div className="bg-[#030b17]/90 border border-cyan-800/60 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
               <div className="absolute top-0 right-0 w-20 h-1 bg-cyan-500 shadow-[0_0_10px_rgba(34,211,238,1)]"></div>
@@ -278,14 +239,14 @@ export default function App() {
                   <FileSpreadsheet className="w-4 h-4 text-cyan-500" /> REGISTROS VALIDADOS
                 </h3>
               </div>
-              <div className="overflow-x-auto h-[250px] custom-scrollbar">
+              <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
-                  <thead className="text-[10px] text-cyan-600 bg-[#020617]/50 border-b border-cyan-900/50 sticky top-0 z-10">
+                  <thead className="text-[10px] text-cyan-600 bg-[#020617]/50 border-b border-cyan-900/50">
                     <tr>
-                      <th className="px-4 py-3 font-bold tracking-wider bg-[#020617]">ARCHIVO ORIGEN</th>
-                      <th className="px-4 py-3 font-bold tracking-wider bg-[#020617]">ID_POLIZA</th>
-                      <th className="px-4 py-3 font-bold tracking-wider bg-[#020617]">DOC_REF</th>
-                      <th className="px-4 py-3 font-bold tracking-wider text-right bg-[#020617]">PRIMA_TOTAL</th>
+                      <th className="px-4 py-3 font-bold tracking-wider">ARCHIVO ORIGEN</th>
+                      <th className="px-4 py-3 font-bold tracking-wider">ID_POLIZA</th>
+                      <th className="px-4 py-3 font-bold tracking-wider">DOC_REF</th>
+                      <th className="px-4 py-3 font-bold tracking-wider text-right">PRIMA_TOTAL</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -305,6 +266,7 @@ export default function App() {
         </div>
       </main>
       
+      {/* Estilos para el Scrollbar Tech */}
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #020617; border-left: 1px solid rgba(22, 78, 99, 0.5); }

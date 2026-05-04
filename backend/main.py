@@ -4,16 +4,14 @@ import shutil
 import pdfplumber
 import pandas as pd
 import numpy as np
-import gc
 from fastapi.responses import FileResponse
-from typing import List, Dict, Any
+from typing import List
 from datetime import datetime
 from openpyxl import Workbook 
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 print("Cargando motor OCR ligero... (RapidOCR/ONNX)")
 from rapidocr_onnxruntime import RapidOCR
@@ -24,10 +22,6 @@ MESES_TEXTO = {
     'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
     'septiembre': '09', 'setiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
 }
-
-# --- ESTRUCTURA DE DATOS MASIVOS ---
-class DatosMasivos(BaseModel):
-    resultados: List[Dict[str, Any]]
 
 # ==========================================
 # FUNCIONES AUXILIARES
@@ -86,14 +80,13 @@ def formatear_dolares(monto, texto_completo, palabra_clave):
 def extraer_datos_pdf(ruta_archivo):
     texto_completo = ""
     with pdfplumber.open(ruta_archivo) as pdf:
-        # OPTIMIZACIÓN DE VELOCIDAD: Leemos solo las 3 primeras páginas
-        paginas_a_procesar = pdf.pages[:3] 
+        paginas_a_procesar = pdf.pages[:10] 
         for pagina in paginas_a_procesar:
             texto = pagina.extract_text() 
-            # MOTOR LIGERO (RAPIDOCR) CON IMÁGENES REDUCIDAS
+            # SI NO HAY TEXTO DIGITAL, ENTRA EL MOTOR LIGERO (RAPIDOCR)
             if not texto or len(texto.strip()) < 20:
                 try:
-                    img = pagina.to_image(resolution=100).original
+                    img = pagina.to_image(resolution=200).original
                     img_np = np.array(img)
                     resultado, _ = lector_ocr(img_np)
                     if resultado:
@@ -347,13 +340,17 @@ def aplicar_formato_excel(ruta_excel):
     wb.save(ruta_excel)
 
 def generar_trama_masiva(resultados, ruta_directorio):
+    # ¡BOMBA DESACTIVADA! Creamos el Excel desde cero sin buscar plantillas.
     wb = Workbook()
+
+    # --- SELLO INVISIBLE DE AUTORÍA ---
     wb.properties.creator = "Carlos Enrique Zegarra Jurado - PROPIEDAD INTELECTUAL"
     wb.properties.title = "C.Z.A.R. Engine Extraction"
     
     ws = wb.active
     ws.title = "TRAMA"
     
+    # LOS ENCABEZADOS EXACTOS
     cabeceras = [
         "POLIZA_CERTF", "AVISO_COB_NUM_PRIMERA_CUOTA", "TIPO_DOC", "TIPO_PAGO", 
         "AVISO_VIGENCIA_INICIO", "AVISO_VIGENCIA_FIN", "FECHA_EMISION", 
@@ -363,6 +360,7 @@ def generar_trama_masiva(resultados, ruta_directorio):
     ]
     ws.append(cabeceras)
     
+    # Formato a tu cabecera
     color_cabecera = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
     fuente_blanca = Font(color="FFFFFF", bold=True)
     for celda in ws[1]:
@@ -375,6 +373,7 @@ def generar_trama_masiva(resultados, ruta_directorio):
         try: return datetime.strptime(fecha_str.replace('-', '/'), "%d/%m/%Y")
         except ValueError: return None
 
+    # Rellenamos con los datos y fórmulas
     fila = 2 
     for datos in resultados:
         ws[f'A{fila}'] = datos.get("Poliza_Contrato", "")
@@ -409,6 +408,7 @@ def generar_trama_masiva(resultados, ruta_directorio):
         max_length = max((len(str(cell.value)) for cell in col if cell.value), default=0)
         ws.column_dimensions[col[0].column_letter].width = max_length + 2
 
+    # Guardamos la trama final en la ruta temporal (/tmp)
     wb.save(os.path.join(ruta_directorio, "trama_carga_masiva_FINAL.xlsx"))
 
 # ==========================================
@@ -424,15 +424,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ENDPOINT 1: SOLO EXTRAE LOS DATOS DE LOS PDFs
 @app.post("/procesar-pdfs/")
 async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
+    # Usamos /tmp para que Render nos deje guardar los PDFs temporales
     ruta_temp_pdfs = "/tmp/pdfs"
     os.makedirs(ruta_temp_pdfs, exist_ok=True)
     
     resultados = []
     
-    # Procesamos el lote de PDFs de forma secuencial y segura
     for file in archivos:
         ruta_archivo = os.path.join(ruta_temp_pdfs, file.filename)
         with open(ruta_archivo, "wb") as buffer:
@@ -446,35 +445,23 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
         finally:
             if os.path.exists(ruta_archivo):
                 os.remove(ruta_archivo)
-            
-            # --- NUEVO: VACIAR LA RAM A LA FUERZA ---
-            gc.collect() 
 
-    # Devolvemos solo la data JSON
-    return {"status": "success", "mensaje": "Lote procesado", "datos": resultados}
+    if resultados:
+        # TODO SE GUARDA EN /tmp PARA COMPATIBILIDAD ABSOLUTA CON LA NUBE
+        carpeta_resultados = "/tmp"
+        
+        df = pd.DataFrame(resultados)[[
+            "Archivo", "Ruc_DNI", "Poliza_Contrato", "Documento",
+            "Vigencia_Inicio", "Vigencia_Fin", "Fecha_Emision", "Prima_Total", "Fecha_pago"
+        ]]
+        
+        ruta_excel = os.path.join(carpeta_resultados, "Reporte_Polizas.xlsx")
+        df.to_excel(ruta_excel, index=False)
+        aplicar_formato_excel(ruta_excel)
 
+        generar_trama_masiva(resultados, carpeta_resultados)
 
-# ENDPOINT 2: ENSAMBLA TODOS LOS DATOS EN LOS EXCELS FINALES
-@app.post("/generar-excels-finales/")
-async def generar_excels_finales(payload: DatosMasivos):
-    carpeta_resultados = "/tmp"
-    resultados = payload.resultados
-
-    if not resultados:
-        raise HTTPException(status_code=400, detail="No hay datos para procesar")
-
-    df = pd.DataFrame(resultados)[[
-        "Archivo", "Ruc_DNI", "Poliza_Contrato", "Documento",
-        "Vigencia_Inicio", "Vigencia_Fin", "Fecha_Emision", "Prima_Total", "Fecha_pago"
-    ]]
-    
-    ruta_excel = os.path.join(carpeta_resultados, "Reporte_Polizas.xlsx")
-    df.to_excel(ruta_excel, index=False)
-    aplicar_formato_excel(ruta_excel)
-
-    generar_trama_masiva(resultados, carpeta_resultados)
-
-    return {"status": "success", "mensaje": "Excels maestros generados."}
+        return {"status": "success", "mensaje": "Lote procesado por motor neural ligero. Archivos listos.", "datos": resultados}
 
 # ==========================================
 # ENDPOINTS PARA DESCARGA DE ARCHIVOS
