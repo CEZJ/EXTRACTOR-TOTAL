@@ -496,5 +496,6 @@ async def descargar_trama():
 
 if __name__ == "__main__":
     import uvicorn
-    print("\n[+] Iniciando Servidor API de Extracción de Lotes en http://localhost:8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
