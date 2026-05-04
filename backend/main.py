@@ -82,7 +82,7 @@ def extraer_datos_pdf(ruta_archivo):
     with pdfplumber.open(ruta_archivo) as pdf:
         paginas_a_procesar = pdf.pages[:10] 
         for pagina in paginas_a_procesar:
-            texto = pagina.extract_text()
+            texto = pagina.extract_text() 
             if not texto or len(texto.strip()) < 20:
                 try:
                     img = pagina.to_image(resolution=200).original

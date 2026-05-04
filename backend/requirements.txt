@@ -4,5 +4,3 @@ python-multipart
 pdfplumber
 pandas
 openpyxl
-easyocr
-torch
