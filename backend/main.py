@@ -475,7 +475,7 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
 # ENDPOINTS PARA DESCARGA DE ARCHIVOS
 # ==========================================
 
-@app.get("/descargar-reporte/")
+@app.get("/descargar-reporte")
 async def descargar_reporte():
     directorio_base = os.path.dirname(os.path.abspath(__file__))
     # Apuntamos a la subcarpeta "Archivos_Excel"
@@ -484,7 +484,7 @@ async def descargar_reporte():
         return FileResponse(path=ruta, filename="Reporte_Polizas.xlsx")
     raise HTTPException(status_code=404, detail="No encontrado")
 
-@app.get("/descargar-trama/")
+@app.get("/descargar-trama")
 async def descargar_trama():
     directorio_base = os.path.dirname(os.path.abspath(__file__))
     # Apuntamos a la subcarpeta "Archivos_Excel"

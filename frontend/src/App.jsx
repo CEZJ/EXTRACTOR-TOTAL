@@ -19,25 +19,28 @@ export default function App() {
 
   const addLog = (type, text) => {
     setLogs((prev) => [...prev, { type, text, time: new Date().toLocaleTimeString() }]);
-  };
+  }; 
 
   const descargarExcels = () => {
     addLog('system', 'Iniciando descargas seguras...');
+    
+    // Descarga 1
     const link1 = document.createElement('a');
-    link1.href = "https://extractor-total-2.onrender.com/descargar-reporte/";
+    link1.href = "https://extractor-total-2.onrender.com/descargar-reporte";
     document.body.appendChild(link1);
     link1.click();
     document.body.removeChild(link1);
 
+    // Esperamos 2 segundos para la Descarga 2
     setTimeout(() => {
-      const link2 = document.createElement('a');
-      link2.href = "https://extractor-total-2.onrender.com/descargar-trama/";
-      document.body.appendChild(link2);
-      link2.click();
-      document.body.removeChild(link2);
-      addLog('success', 'Descargas completadas. Enlace cerrado.');
-    }, 800);
-  };
+        const link2 = document.createElement('a');
+        link2.href = "https://extractor-total-2.onrender.com/descargar-trama";
+        document.body.appendChild(link2);
+        link2.click();
+        document.body.removeChild(link2);
+        addLog('success', 'Descargas completadas.');
+    }, 2000); 
+};
 
   const procesarArchivos = async (archivos) => {
     if (!archivos || archivos.length === 0) return;
