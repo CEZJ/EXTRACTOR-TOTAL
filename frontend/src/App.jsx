@@ -24,14 +24,14 @@ export default function App() {
   const descargarExcels = () => {
     addLog('system', 'Iniciando descargas seguras...');
     const link1 = document.createElement('a');
-    link1.href = "http://localhost:8000/descargar-reporte/";
+    link1.href = "https://extractor-total-2.onrender.com/descargar-reporte/";
     document.body.appendChild(link1);
     link1.click();
     document.body.removeChild(link1);
 
     setTimeout(() => {
       const link2 = document.createElement('a');
-      link2.href = "http://localhost:8000/descargar-trama/";
+      link2.href = "https://extractor-total-2.onrender.com/descargar-trama/";
       document.body.appendChild(link2);
       link2.click();
       document.body.removeChild(link2);
@@ -53,7 +53,7 @@ export default function App() {
     try {
       addLog('system', 'ENVIANDO LOTE A MOTOR NEURAL (FastAPI)...');
       setProgress(60);
-      const response = await fetch("http://localhost:8000/procesar-pdfs/", { method: "POST", body: formData });
+      const response = await fetch("https://extractor-total-2.onrender.com/procesar-pdfs/", { method: "POST", body: formData });
       if (!response.ok) throw new Error("Error en el servidor");
       
       const resultado = await response.json();
