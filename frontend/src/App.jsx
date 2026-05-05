@@ -26,7 +26,7 @@ export default function App() {
     
     // Descarga 1: Reporte
     const link1 = document.createElement('a');
-    link1.href = "https://extractor-total-2.onrender.com/descargar-reporte";
+    link1.href = "https://tcajox-extractor-total.hf.space/descargar-reporte";
     document.body.appendChild(link1);
     link1.click();
     document.body.removeChild(link1);
@@ -34,7 +34,7 @@ export default function App() {
     // Esperamos 2 segundos para la Descarga 2: Trama
     setTimeout(() => {
         const link2 = document.createElement('a');
-        link2.href = "https://extractor-total-2.onrender.com/descargar-trama";
+        link2.href = "https://tcajox-extractor-total.hf.space/descargar-trama";
         document.body.appendChild(link2);
         link2.click();
         document.body.removeChild(link2);
@@ -72,7 +72,7 @@ export default function App() {
             setProgress(60);
 
             // Llamamos al nuevo endpoint especializado en ZIP
-            const response = await fetch("https://extractor-total-2.onrender.com/procesar-zip/", {
+            const response = await fetch("https://tcajox-extractor-total.hf.space/procesar-zip/", {
                 method: "POST",
                 body: formData
             });
@@ -110,7 +110,7 @@ export default function App() {
                 const numLote = Math.floor(i / tamañoLote) + 1;
                 addLog('system', `[ENVIANDO] Procesando archivo ${numLote} de ${archivosArray.length}...`);
 
-                const response = await fetch("https://extractor-total-2.onrender.com/procesar-pdfs/", {
+                const response = await fetch("https://tcajox-extractor-total.hf.space/procesar-pdfs/", {
                     method: "POST", body: formData
                 });
 
@@ -125,7 +125,7 @@ export default function App() {
             addLog('system', '[ENSAMBLANDO] Consolidando matriz maestra de datos...');
             setProgress(90);
 
-            const resFinal = await fetch("https://extractor-total-2.onrender.com/generar-excels-finales/", {
+            const resFinal = await fetch("https://tcajox-extractor-total.hf.space/generar-excels-finales/", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ resultados: todosLosResultados })
             });

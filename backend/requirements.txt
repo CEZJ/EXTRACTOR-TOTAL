@@ -1,8 +1,8 @@
 fastapi
 uvicorn
-python-multipart
 pdfplumber
 pandas
+numpy
 openpyxl
 rapidocr-onnxruntime
-opencv-python-headless
+python-multipart
