@@ -1,4 +1,5 @@
 import os
+import zipfile
 import re
 import shutil
 import pdfplumber
@@ -459,6 +460,73 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
             gc.collect()
 
     return {"status": "success", "mensaje": "Lote procesado", "datos": resultados}
+
+
+# ==========================================
+# ENDPOINT NIVEL 1: PROCESAMIENTO MASIVO POR ZIP
+# ==========================================
+@app.post("/procesar-zip/")
+async def procesar_zip_masivo(archivo: UploadFile = File(...)):
+    if not archivo.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="El archivo debe ser un .zip")
+
+    # 1. Rutas temporales seguras en Render
+    ruta_zip = f"/tmp/{archivo.filename}"
+    carpeta_extraccion = "/tmp/pdfs_descomprimidos"
+    
+    # Limpiamos la carpeta si existía de antes
+    if os.path.exists(carpeta_extraccion):
+        shutil.rmtree(carpeta_extraccion)
+    os.makedirs(carpeta_extraccion, exist_ok=True)
+
+    # 2. Guardamos el ZIP y lo descomprimimos
+    with open(ruta_zip, "wb") as buffer:
+        shutil.copyfileobj(archivo.file, buffer)
+
+    try:
+        with zipfile.ZipFile(ruta_zip, 'r') as zip_ref:
+            zip_ref.extractall(carpeta_extraccion)
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Archivo ZIP corrupto")
+
+    resultados = []
+
+    # 3. Escaneamos la carpeta en busca de PDFs y los procesamos localmente
+    for root, dirs, files in os.walk(carpeta_extraccion):
+        for file in files:
+            if file.lower().endswith('.pdf'):
+                ruta_pdf = os.path.join(root, file)
+                try:
+                    datos = extraer_datos_pdf(ruta_pdf)
+                    resultados.append(datos)
+                except Exception as e:
+                    print(f"Error procesando {file}: {e}")
+                finally:
+                    # Obligatorio: Limpiar RAM después de cada PDF
+                    gc.collect()
+
+    # 4. Limpieza de disco: Borramos el ZIP y los PDFs extraídos
+    if os.path.exists(ruta_zip):
+        os.remove(ruta_zip)
+    if os.path.exists(carpeta_extraccion):
+        shutil.rmtree(carpeta_extraccion)
+
+    # 5. Generar Excels Finales si hubo resultados
+    if not resultados:
+        raise HTTPException(status_code=400, detail="No se encontraron PDFs válidos dentro del ZIP")
+
+    carpeta_resultados = "/tmp"
+    df = pd.DataFrame(resultados)[[
+        "Archivo", "Ruc_DNI", "Poliza_Contrato", "Documento",
+        "Vigencia_Inicio", "Vigencia_Fin", "Fecha_Emision", "Prima_Total", "Fecha_pago"
+    ]]
+    
+    ruta_excel = os.path.join(carpeta_resultados, "Reporte_Polizas.xlsx")
+    df.to_excel(ruta_excel, index=False)
+    aplicar_formato_excel(ruta_excel)
+    generar_trama_masiva(resultados, carpeta_resultados)
+
+    return {"status": "success", "mensaje": f"ZIP procesado. {len(resultados)} pólizas extraídas.", "datos": resultados}
 
 
 # ENDPOINT 2: ENSAMBLA TODOS LOS DATOS EN LOS EXCELS FINALES

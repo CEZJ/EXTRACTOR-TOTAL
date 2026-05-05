@@ -53,70 +53,98 @@ export default function App() {
     setLogs([]); 
     setExtractedData([]);
 
-    const archivosArray = Array.from(archivosSeleccionados); 
-    
-    // <-- NUEVO: LOTE DE 1 (Máxima seguridad para la RAM de Render)
-    const tamañoLote = 1; 
-    let todosLosResultados = [];
+    const archivo = archivosSeleccionados[0];
+    const esZip = archivo.name.toLowerCase().endsWith('.zip');
     
     try {
-        addLog('system', `INICIANDO INGESTA MASIVA. Total: ${archivosArray.length} archivo(s)...`);
-        
-        // 1. CICLO DE LOTES
-        for (let i = 0; i < archivosArray.length; i += tamañoLote) {
-            const lote = archivosArray.slice(i, i + tamañoLote);
-            const formData = new FormData();
-            
-            lote.forEach(file => {
-                formData.append("archivos", file);
-                addLog('info', `[EN COLA] > ${file.name}`);
-            });
-            
-            const numLote = Math.floor(i / tamañoLote) + 1;
-            const totalLotes = Math.ceil(archivosArray.length / tamañoLote);
-            
-            addLog('system', `[ENVIANDO] Lote ${numLote} de ${totalLotes} al Motor Neural...`);
+        if (esZip) {
+            // ==========================================
+            // RUTA NIVEL 1: ARCHIVO .ZIP
+            // ==========================================
+            addLog('system', `[MODO INDUSTRIAL] Detectado contenedor ZIP: ${archivo.name}`);
+            addLog('info', 'Subiendo paquete al servidor...');
+            setProgress(30);
 
-            // Enviamos lote actual
-            const response = await fetch("https://extractor-total-2.onrender.com/procesar-pdfs/", {
+            const formData = new FormData();
+            formData.append("archivo", archivo);
+
+            addLog('system', 'Desencriptando y procesando localmente. Esto tomará un momento...');
+            setProgress(60);
+
+            // Llamamos al nuevo endpoint especializado en ZIP
+            const response = await fetch("https://extractor-total-2.onrender.com/procesar-zip/", {
                 method: "POST",
                 body: formData
             });
 
-            if (!response.ok) throw new Error(`El servidor rechazó el lote ${numLote}`);
+            if (!response.ok) throw new Error("El servidor falló al procesar el archivo ZIP.");
             
             const data = await response.json();
-            todosLosResultados.push(...data.datos); // Acumulamos los datos extraídos
             
-            // Actualizamos la barra (llega máximo al 80% durante la lectura)
-            const progresoActual = Math.round(((i + lote.length) / archivosArray.length) * 80);
-            setProgress(progresoActual);
+            addLog('success', `[STATUS: OK] Extracción Masiva 100% Finalizada.`);
+            setProgress(100);
+            
+            setExtractedData(data.datos.map((f, i) => ({
+                id: i, file: f['Archivo'], poliza: f['Poliza_Contrato'], doc: f['Documento'], prima: `S/ ${f['Prima_Total']}`
+            })));
+
+        } else {
+            // ==========================================
+            // RUTA CLÁSICA: PDF INDIVIDUAL O POR LOTES
+            // ==========================================
+            const archivosArray = Array.from(archivosSeleccionados); 
+            const tamañoLote = 1; 
+            let todosLosResultados = [];
+            
+            addLog('system', `INICIANDO INGESTA ESTÁNDAR. Total: ${archivosArray.length} archivo(s)...`);
+            
+            for (let i = 0; i < archivosArray.length; i += tamañoLote) {
+                const lote = archivosArray.slice(i, i + tamañoLote);
+                const formData = new FormData();
+                
+                lote.forEach(file => {
+                    formData.append("archivos", file);
+                    addLog('info', `[EN COLA] > ${file.name}`);
+                });
+                
+                const numLote = Math.floor(i / tamañoLote) + 1;
+                addLog('system', `[ENVIANDO] Procesando archivo ${numLote} de ${archivosArray.length}...`);
+
+                const response = await fetch("https://extractor-total-2.onrender.com/procesar-pdfs/", {
+                    method: "POST", body: formData
+                });
+
+                if (!response.ok) throw new Error(`El servidor rechazó el lote ${numLote}`);
+                
+                const data = await response.json();
+                todosLosResultados.push(...data.datos);
+                
+                setProgress(Math.round(((i + lote.length) / archivosArray.length) * 80));
+            }
+
+            addLog('system', '[ENSAMBLANDO] Consolidando matriz maestra de datos...');
+            setProgress(90);
+
+            const resFinal = await fetch("https://extractor-total-2.onrender.com/generar-excels-finales/", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ resultados: todosLosResultados })
+            });
+
+            if (!resFinal.ok) throw new Error("Error al ensamblar los archivos finales.");
+
+            addLog('success', '[STATUS: OK] Extracción Finalizada.');
+            setProgress(100);
+            
+            setExtractedData(todosLosResultados.map((f, i) => ({
+                id: i, file: f['Archivo'], poliza: f['Poliza_Contrato'], doc: f['Documento'], prima: `S/ ${f['Prima_Total']}`
+            })));
         }
 
-        addLog('system', '[ENSAMBLANDO] Consolidando matriz maestra de datos...');
-        setProgress(90);
-
-        // 2. SOLICITUD FINAL: Generar los Excels con toda la data
-        const resFinal = await fetch("https://extractor-total-2.onrender.com/generar-excels-finales/", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ resultados: todosLosResultados })
-        });
-
-        if (!resFinal.ok) throw new Error("Error al ensamblar los archivos finales.");
-
-        addLog('success', '[STATUS: OK] Extracción Masiva 100% Finalizada.');
+        setStatus('success');
         addLog('success', `[GENERADO] > Reporte_Polizas.xlsx`);
         addLog('success', `[GENERADO] > trama_carga_masiva_FINAL.xlsx`);
-        setProgress(100);
         
-        // Mostramos la data en la tabla de la web
-        setExtractedData(todosLosResultados.map((f, i) => ({
-            id: i, file: f['Archivo'], poliza: f['Poliza_Contrato'], doc: f['Documento'], prima: `S/ ${f['Prima_Total']}`
-        })));
-        setStatus('success');
-
-        // 3. DESCARGAMOS LOS ARCHIVOS
+        // Ejecutamos descargas
         descargarExcels(); 
 
     } catch (error) {
