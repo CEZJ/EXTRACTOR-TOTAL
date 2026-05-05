@@ -5,7 +5,7 @@ import shutil
 import pdfplumber
 import pandas as pd
 import numpy as np
-import gc # <-- NUEVO: Recolector de basura para limpiar RAM
+import gc
 from fastapi.responses import FileResponse
 from typing import List, Dict, Any
 from datetime import datetime
@@ -34,7 +34,8 @@ class DatosMasivos(BaseModel):
 # FUNCIONES AUXILIARES
 # ==========================================
 def limpiar_fecha(fecha_str):
-    if not fecha_str: return ""
+    if not fecha_str:
+        return ""
     return re.sub(r'\s+', '', fecha_str)
 
 def buscar_numero_largo(palabras_clave, texto, min_len=4):
@@ -43,43 +44,55 @@ def buscar_numero_largo(palabras_clave, texto, min_len=4):
         bloque = fragmento.group(0)
         bloque = re.sub(r'\bN[oº]?\b|\bNro\.?\b', '', bloque, flags=re.IGNORECASE)
         candidatos = re.findall(r'\b[A-Z0-9\-]*[0-9]{' + str(min_len) + r',}[A-Z0-9\-]*\b', bloque)
-        if candidatos: return candidatos[0]
+        if candidatos:
+            return candidatos[0]
     return ""
 
 def atrapar_fechas_vigencia(texto, palabras_clave=r'Vigencia de P[oó]liza|Vigencia'):
     fragmentos = re.finditer(rf"(?:{palabras_clave}).{{0,400}}", texto, re.IGNORECASE | re.DOTALL)
     for fragmento in fragmentos:
         fechas = re.findall(r'\b\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4}\b', fragmento.group(0))
-        if len(fechas) >= 2: return limpiar_fecha(fechas[0]), limpiar_fecha(fechas[1])
+        if len(fechas) >= 2:
+            return limpiar_fecha(fechas[0]), limpiar_fecha(fechas[1])
     return "", ""
 
 def atrapar_fecha_emision(texto, palabras_clave=r'Fecha\s*(?:de\s*)?Emisi[oó]n|Emisi[oó]n|FECHA(?!\s*Vencimiento)'):
     fragmentos = re.finditer(rf'(?:{palabras_clave}).{{0,500}}', texto, re.IGNORECASE | re.DOTALL)
     for fragmento in fragmentos:
         fechas = re.findall(r'\b\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4}\b', fragmento.group(0))
-        if fechas: return limpiar_fecha(fechas[0])
+        if fechas:
+            return limpiar_fecha(fechas[0])
+
     match_larga = re.search(r'Emitida\s+en.*?(\d{1,2})\s+de\s+([a-zA-Z]+)\s+(?:de|del)\s+(\d{4})', texto, re.IGNORECASE | re.DOTALL)
     if match_larga:
         dia, mes, anio = match_larga.groups()
         return f"{int(dia):02d}/{MESES_TEXTO.get(mes.lower(), '01')}/{anio}"
+
     return ""
 
 def atrapar_monto_cercano(palabras_clave, texto):
     fragmentos = re.finditer(rf"(?:{palabras_clave}).{{0,500}}", texto, re.IGNORECASE | re.DOTALL)
     for fragmento in fragmentos:
         bloque = fragmento.group(0)
-        monto = re.search(r'(?:S/\.|S/|S\s*/|5/|\$|USD|US\$|S\s*-|SOLES)\s*([\d]+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\b', bloque, re.IGNORECASE)
-        if monto: return monto.group(1)
+        monto = re.search(
+            r'(?:S/\.|S/|S\s*/|5/|\$|USD|US\$|S\s*-|SOLES)\s*([\d]+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\b',
+            bloque, re.IGNORECASE
+        )
+        if monto:
+            return monto.group(1)
         monto_decimal = re.search(r'\b([\d]+(?:[.,]\d{3})*[.,]\d{1,2})\b', bloque)
-        if monto_decimal: return monto_decimal.group(1)
+        if monto_decimal:
+            return monto_decimal.group(1)
     return ""
 
 def formatear_dolares(monto, texto_completo, palabra_clave):
-    if not monto: return ""
+    if not monto:
+        return ""
     fragmento = re.search(rf"({palabra_clave}.{{0,50}})", texto_completo, re.DOTALL | re.IGNORECASE)
     if fragmento and ("$" in fragmento.group(0) or "USD" in fragmento.group(0).upper()):
         return f"($) {monto}"
     return monto
+
 
 # ==========================================
 # EXTRACCION PRINCIPAL
@@ -87,9 +100,10 @@ def formatear_dolares(monto, texto_completo, palabra_clave):
 def extraer_datos_pdf(ruta_archivo):
     texto_completo = ""
     with pdfplumber.open(ruta_archivo) as pdf:
-        paginas_a_procesar = pdf.pages[:3] 
+        paginas_a_procesar = pdf.pages[:10] 
+        
         for pagina in paginas_a_procesar:
-            texto = pagina.extract_text() 
+            texto = pagina.extract_text()
             if not texto or len(texto.strip()) < 20:
                 try:
                     img = pagina.to_image(resolution=100).original 
@@ -99,8 +113,7 @@ def extraer_datos_pdf(ruta_archivo):
                         texto = "\n".join([line[1] for line in resultado])
                     else:
                         texto = ""
-                        
-                    # --- NUEVO: DESTRUCCIÓN AGRESIVA DE MEMORIA ---
+                    
                     del img
                     del img_np
                     del resultado
@@ -108,171 +121,294 @@ def extraer_datos_pdf(ruta_archivo):
                 except Exception as e:
                     print(f"Error OCR: {e}")
                     texto = ""
-            if texto: texto_completo += texto + "\n"
+            if texto:
+                texto_completo += texto + "\n"
             
-            # --- Forzamos limpieza tras cada página leída ---
             gc.collect()
 
     datos = {
-        "Archivo": os.path.basename(ruta_archivo), "Ruc_DNI": "", "Poliza_Contrato": "",
-        "Documento": "", "Vigencia_Inicio": "", "Vigencia_Fin": "", "Fecha_Emision": "",
-        "Prima_Total": "", "Fecha_pago": ""
+        "Archivo": os.path.basename(ruta_archivo),
+        "Ruc_DNI": "",
+        "Poliza_Contrato": "",
+        "Documento": "",
+        "Vigencia_Inicio": "",
+        "Vigencia_Fin": "",
+        "Fecha_Emision": "",
+        "Prima_Total": "",
+        "Fecha_pago": ""
     }
     texto_upper = texto_completo.upper()
 
-
+    # ==========================================
+    # PROTECTA
+    # ==========================================
     if "PROTECTA" in texto_upper:
         datos["Ruc_DNI"] = buscar_numero_largo(r"DNI/RUC:|RUC", texto_completo, 8)
         datos["Poliza_Contrato"] = buscar_numero_largo(r"P[oó]liza|Contrato", texto_completo, 4)
+
         doc = ""
+        
         m_sctr = re.search(r"(?:AC|PF|CS)\s*-\s*SCTR\s*-\s*(\d+)", texto_completo, re.IGNORECASE)
-        if m_sctr: doc = m_sctr.group(1)
+        if m_sctr:
+            doc = m_sctr.group(1)
+            
         if not doc:
             m_fact = re.search(r"F\d{3}\s*-\s*(\d+)", texto_completo)
-            if m_fact and re.search(r"FACTURA|SOAT", texto_completo, re.IGNORECASE): doc = m_fact.group(1)
+            if m_fact and re.search(r"FACTURA|SOAT", texto_completo, re.IGNORECASE):
+                doc = m_fact.group(1)
+                
         if not doc:
-            if re.search(r"C[oó]digo\s*SBS[\s:]*VI", texto_completo, re.IGNORECASE) or "PENSIONES" in texto_upper: doc = "Buscar en plataforma"
+            if re.search(r"C[oó]digo\s*SBS[\s:]*VI", texto_completo, re.IGNORECASE) or "PENSIONES" in texto_upper:
+                doc = "Buscar en plataforma"
+                
         if not doc:
-            doc_sucio = re.search(r"AVISO DE COBRANZA.*?FECHA.{0,30}?([A-Z0-9\-]{5,})", texto_completo, re.DOTALL)
+            doc_sucio = re.search(
+                r"AVISO DE COBRANZA.*?FECHA.{0,30}?([A-Z0-9\-]{5,})",
+                texto_completo, re.DOTALL
+            )
             doc = re.sub(r"[A-Za-z\-]+", "", doc_sucio.group(1)) if doc_sucio else ""
-        if not doc: doc = "Buscar en plataforma"
+
+        if not doc:
+            doc = "Buscar en plataforma"
+
         datos["Documento"] = doc
+        
         datos["Vigencia_Inicio"], datos["Vigencia_Fin"] = atrapar_fechas_vigencia(texto_completo, r"Vigencia")
+        
         if not datos["Vigencia_Inicio"] or not datos["Vigencia_Fin"]:
             m_vig = re.search(r'Vigencia\s*[:.-]?\s*(?:Del\s*)?(\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4})\s*al\s*(\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4})', texto_completo, re.IGNORECASE)
             if m_vig:
                 datos["Vigencia_Inicio"] = limpiar_fecha(m_vig.group(1))
                 datos["Vigencia_Fin"] = limpiar_fecha(m_vig.group(2))
+
         emision = ""
         fe_match = re.search(r'Fecha\s*de\s*Emisi[oó]n', texto_completo, re.IGNORECASE)
         if fe_match:
             ventana = texto_completo[max(0, fe_match.start() - 80):fe_match.end() + 100]
             fecha_encontrada = re.search(r'\d{2}\s*[/\-]\s*\d{2}\s*[/\-]\s*\d{4}', ventana)
-            if fecha_encontrada: emision = limpiar_fecha(fecha_encontrada.group(0))
-        if not emision: emision = atrapar_fecha_emision(texto_completo, r"Fecha\s*(?:de\s*)?Emisi[oó]n|Emisi[oó]n|FECHA(?!\s*Vencimiento)")
-        if not emision and datos["Documento"] == "Buscar en plataforma": emision = datos.get("Vigencia_Inicio", "")
+            if fecha_encontrada:
+                emision = limpiar_fecha(fecha_encontrada.group(0))
+
+        if not emision:
+            emision = atrapar_fecha_emision(
+                texto_completo,
+                r"Fecha\s*(?:de\s*)?Emisi[oó]n|Emisi[oó]n|FECHA(?!\s*Vencimiento)"
+            )
+
+        if not emision and datos["Documento"] == "Buscar en plataforma":
+            emision = datos.get("Vigencia_Inicio", "")
+
         datos["Fecha_Emision"] = emision
+
         monto = ""
+        
         m_importe = re.search(r'Importe\s*Total[\s:.-]+(?:S/\.|S/|5/|\$|S\s*-)?\s*([\d]+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)', texto_completo, re.IGNORECASE)
-        if m_importe: monto = m_importe.group(1)
+        if m_importe:
+            monto = m_importe.group(1)
+
         if not monto:
-            for kw in [r"Prima Comercial Total m[aá]s IGV", r"PRIMA COMERCIAL TOTAL", r"Importe Total", r"TOTAL A PAGAR", r"PRIMA TOTAL"]:
+            for kw in [
+                r"Prima Comercial Total m[aá]s IGV",
+                r"PRIMA COMERCIAL TOTAL",
+                r"Importe Total",
+                r"TOTAL A PAGAR",
+                r"PRIMA TOTAL"
+            ]:
                 monto = atrapar_monto_cercano(kw, texto_completo)
-                if monto: break
+                if monto:
+                    break
+                    
         if not monto:
             m_monto = re.search(r'Importe\s*Total\s*[:.-]?\s*(?:S/|S/\.|USD|\$|S\s*/)?\s*([\d]+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)', texto_completo, re.IGNORECASE)
-            if m_monto: monto = m_monto.group(1)
+            if m_monto:
+                monto = m_monto.group(1)
+                
         datos["Prima_Total"] = formatear_dolares(monto, texto_completo, "PRIMA|Importe|TOTAL")
 
+    # ==========================================
+    # PACIFICO
+    # ==========================================
     elif "PACIFICO" in texto_upper or "PACÍFICO" in texto_upper:
         datos["Ruc_DNI"] = buscar_numero_largo(r"R\.?U\.?C\.?", texto_completo, 11) or "No aplica"
+        
         m_tabla_gen = re.search(r'\b(\d{6,9})\s+(\d{5,9})\s+\d{2,10}\s+\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4}', texto_completo)
+
         poliza = ""
         m_pol_exacto = re.search(r'P[oó]liza/Contrato:\s*([A-Z0-9\-]{5,})', texto_completo, re.IGNORECASE)
-        if m_pol_exacto: poliza = m_pol_exacto.group(1)
+        if m_pol_exacto:
+            poliza = m_pol_exacto.group(1)
         if not poliza:
             m_pol_tabla = re.search(r'(?:AC|F\d{3})[\s\-]*\d+\s+(\d{6,})', texto_completo)
-            if m_pol_tabla: poliza = m_pol_tabla.group(1)
-        if not poliza and m_tabla_gen: poliza = m_tabla_gen.group(2)
-        if not poliza: poliza = buscar_numero_largo(r"P[OÓ]LIZA(?:/Contrato)?|Contrato", texto_completo, 5)
+            if m_pol_tabla:
+                poliza = m_pol_tabla.group(1)
+        if not poliza and m_tabla_gen:
+            poliza = m_tabla_gen.group(2)
+        if not poliza:
+            poliza = buscar_numero_largo(r"P[OÓ]LIZA(?:/Contrato)?|Contrato", texto_completo, 5)
         datos["Poliza_Contrato"] = poliza
+
         doc = ""
         m_doc_acob = re.search(r'A/COB\s*Giro.{0,100}?\b(\d{7,10})\b', texto_completo, re.IGNORECASE | re.DOTALL)
-        if m_doc_acob: doc = m_doc_acob.group(1)
+        if m_doc_acob:
+            doc = m_doc_acob.group(1)
         if not doc:
             m_doc_tabla = re.search(r'(?:AC|F\d{3})[\s\-]*(\d{5,})', texto_completo)
-            if m_doc_tabla: doc = m_doc_tabla.group(1)
-        if not doc and m_tabla_gen: doc = m_tabla_gen.group(1)
-        if not doc: doc = buscar_numero_largo(r"A/COB|LIQUIDACION DE PRIMA|Aviso de Cobranza", texto_completo, 5)
+            if m_doc_tabla:
+                doc = m_doc_tabla.group(1)
+        if not doc and m_tabla_gen:
+            doc = m_tabla_gen.group(1)
+        if not doc:
+            doc = buscar_numero_largo(r"A/COB|LIQUIDACION DE PRIMA|Aviso de Cobranza", texto_completo, 5)
         datos["Documento"] = doc
+
         datos["Vigencia_Inicio"], datos["Vigencia_Fin"] = atrapar_fechas_vigencia(texto_completo, r"Vigencia")
         datos["Fecha_Emision"] = atrapar_fecha_emision(texto_completo, r"Fecha\s*(?:de\s*)?Emisi[oó]n|Emisi[oó]n")
+
         prima = ""
         m_monto_tabla = re.search(r'\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4}[\s\-]+\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4}\s+([\d]+(?:[.,]\d{3})*(?:[.,]\d{2}))', texto_completo)
-        if m_monto_tabla: prima = m_monto_tabla.group(1)
+        if m_monto_tabla:
+            prima = m_monto_tabla.group(1)
+            
         if not prima:
             palabras_monto_pacifico = r"Prima\s*Comercial\s*\+\s*INT.*?IGV|Importe\s*Total|TOTAL\s*A\s*COBRAR|Total\s*a\s*Pagar|PRIMA\s*TOTAL"
             monto = atrapar_monto_cercano(palabras_monto_pacifico, texto_completo)
             prima = formatear_dolares(monto, texto_completo, "IGV|TOTAL|Importe|Pagar")
+
             if not prima:
                 monto_alt = re.search(rf'(?:{palabras_monto_pacifico}).{{0,800}}?(?:S/\.|S/|5/|\$|USD|US\$|S\s*-)?\s*([\d]+(?:[.,]\d{{3}})*(?:[.,]\d{{2}})?)', texto_completo, re.IGNORECASE | re.DOTALL)
-                if monto_alt: prima = formatear_dolares(monto_alt.group(1), texto_completo, "IGV|TOTAL|COBRAR")
+                if monto_alt:
+                    prima = formatear_dolares(monto_alt.group(1), texto_completo, "IGV|TOTAL|COBRAR")
+                    
         datos["Prima_Total"] = prima
+
         if not datos["Fecha_Emision"]:
             emision_alt = re.search(r'(?:Fecha\s*(?:de\s*)?Emisi[oó]n|Emisi[oó]n).{0,800}?(\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4})', texto_completo, re.IGNORECASE | re.DOTALL)
-            if emision_alt: datos["Fecha_Emision"] = limpiar_fecha(emision_alt.group(1))
+            if emision_alt:
+                datos["Fecha_Emision"] = limpiar_fecha(emision_alt.group(1))
 
+    # ==========================================
+    # SANITAS / CRECER
+    # ==========================================
     elif "SANITAS" in texto_upper or "CRECER" in texto_upper:
         datos["Ruc_DNI"] = buscar_numero_largo(r"DNI/RUC|RUC", texto_completo, 8)
         datos["Poliza_Contrato"] = buscar_numero_largo(r"Contrato", texto_completo, 4)
+        
         doc = ""
         m_sctr_san = re.search(r'(?:PF|CS)\s*-\s*SCTR\s*-\s*(\d+)', texto_completo, re.IGNORECASE)
-        if m_sctr_san: doc = m_sctr_san.group(1)
+        if m_sctr_san:
+            doc = m_sctr_san.group(1)
+            
         if not doc:
             m_fact_san = re.search(r"F\d{3}\s*-\s*(\d+)", texto_completo)
-            if m_fact_san and "FACTURA" in texto_upper: doc = m_fact_san.group(1)
+            if m_fact_san and "FACTURA" in texto_upper:
+                doc = m_fact_san.group(1)
+        
         if not doc:
             doc_sucio = re.search(r"(?:PROFORMA|AVISO DE COBRANZA).*?FECHA.{0,30}?([A-Z0-9\-]{5,})", texto_completo, re.DOTALL | re.IGNORECASE)
             doc = re.sub(r"[A-Za-z\-]+", "", doc_sucio.group(1)) if doc_sucio else ""
+            
         datos["Documento"] = doc
+        
         datos["Vigencia_Inicio"], datos["Vigencia_Fin"] = atrapar_fechas_vigencia(texto_completo, r"Vigencia")
         datos["Fecha_Emision"] = atrapar_fecha_emision(texto_completo, r"Fecha de Emisi[oó]n|FECHA(?!\s*Vencimiento)")
+        
         monto = ""
         m_monto_san = re.search(r'(?:Importe\s*Total|PRECIO\s*VENTA\s*TOTAL|PRIMA\s*TOTAL)[\s\S]{1,300}?(?:S/|S/\.|USD|\$|S\s*/)?\s*(?<![/-])(?<!\d)([\d]+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)(?![/-])(?!\d)', texto_completo, re.IGNORECASE)
-        if m_monto_san: monto = m_monto_san.group(1)
-        if not monto: monto = atrapar_monto_cercano(r"Importe Total|TOTAL", texto_completo)
+        if m_monto_san:
+            monto = m_monto_san.group(1)
+            
+        if not monto:
+            monto = atrapar_monto_cercano(r"Importe Total|TOTAL", texto_completo)
+            
         datos["Prima_Total"] = formatear_dolares(monto, texto_completo, "TOTAL|Importe Total")
 
+    # ==========================================
+    # MAPFRE
+    # ==========================================
     elif "MAPFRE" in texto_upper:
         datos["Ruc_DNI"] = buscar_numero_largo(r"RUC", texto_completo, 11)
+        
         poliza = ""
         m_pol_exacto = re.search(r'P[OÓ0-9A-Z]*LIZA[^\d]{0,40}?\b(\d{8,})\b', texto_completo, re.IGNORECASE)
-        if m_pol_exacto: poliza = m_pol_exacto.group(1)
+        if m_pol_exacto:
+            poliza = m_pol_exacto.group(1)
+            
         if not poliza:
             m_pol_sbs = re.search(r'\b[A-Z]{2}\d{8,10}\b[\s\S]{1,200}?\b(\d{13,15})\b', texto_completo)
-            if m_pol_sbs: poliza = m_pol_sbs.group(1)
+            if m_pol_sbs:
+                poliza = m_pol_sbs.group(1)
+                
         if not poliza:
             pol_candidata = buscar_numero_largo(r"P[OÓ]LIZA", texto_completo, 4)
-            if pol_candidata and pol_candidata.isdigit(): poliza = pol_candidata
+            if pol_candidata and pol_candidata.isdigit():
+                poliza = pol_candidata
         datos["Poliza_Contrato"] = poliza
+
         doc = ""
         m_doc_recibo = re.search(r'(?:NRO[.\s]*RECIBO|CRONOGRAMA DE PAGO)[\s\S]{1,800}?(?<!\d)(\d{8,11})(?!\d)', texto_completo, re.IGNORECASE)
-        if m_doc_recibo: doc = m_doc_recibo.group(1)
+        if m_doc_recibo:
+            doc = m_doc_recibo.group(1)
+            
         if not doc:
             doc_sucio = re.search(r"DOC\. IDENTIFIC\..{0,20}?(?:[A-Z]+\s+)?([A-Z0-9]{5,})", texto_completo)
             doc_candidato = doc_sucio.group(1) if doc_sucio else buscar_numero_largo(r"RECIBO", texto_completo, 5)
-            if doc_candidato and not "FECHA" in doc_candidato.upper(): doc = doc_candidato
+            if doc_candidato and not "FECHA" in doc_candidato.upper():
+                doc = doc_candidato
         datos["Documento"] = doc
+
         datos["Vigencia_Inicio"], datos["Vigencia_Fin"] = atrapar_fechas_vigencia(texto_completo, r"VIGENCIA")
+        
         emision = ""
         m_emi = re.search(r'EMISI[OÓ0-9A-Z]*N[^\d]{0,40}?(\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4})', texto_completo, re.IGNORECASE)
-        if m_emi: emision = limpiar_fecha(m_emi.group(1))
+        if m_emi:
+            emision = limpiar_fecha(m_emi.group(1))
+            
         if not emision:
             m_emi_sbs = re.search(r'\b[A-Z]{2}\d{8,10}\b[\s\S]{1,80}?\b(\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4})\b', texto_completo)
-            if m_emi_sbs: emision = limpiar_fecha(m_emi_sbs.group(1))
+            if m_emi_sbs:
+                emision = limpiar_fecha(m_emi_sbs.group(1))
+                
         datos["Fecha_Emision"] = emision
+
         prima = ""
         m_prima_igv = re.search(r'Prima\s*Comercial\s*\+(?:\s*I[\.\s]*G[\.\s]*V)?[\.\s]*([\d]+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)', texto_completo, re.IGNORECASE)
-        if m_prima_igv: prima = m_prima_igv.group(1)
+        if m_prima_igv:
+            prima = m_prima_igv.group(1)
+            
         if not prima and doc:
             m_cron_monto = re.search(rf'{doc}[\s\S]{{1,300}}?([\d]+(?:[.,]\d{{3}})*(?:[.,]\d{{1,2}})?)', texto_completo, re.IGNORECASE)
-            if m_cron_monto: prima = m_cron_monto.group(1)
+            if m_cron_monto:
+                prima = m_cron_monto.group(1)
+                
         if not prima:
             monto = atrapar_monto_cercano(r"Prima\s*Comercial\s*\+(?:\s*I\.?G\.?V)?|TOTAL|Importe Total", texto_completo)
             prima = formatear_dolares(monto, texto_completo, "TOTAL|Prima Comercial|Importe Total")
+            
         datos["Prima_Total"] = prima
 
+    # ==========================================
+    # RIMAC
+    # ==========================================
     elif "RIMAC" in texto_upper or "RÍMAC" in texto_upper:
         datos["Ruc_DNI"] = buscar_numero_largo(r"R\.?U\.?C\.?", texto_completo, 11)
+        
         poliza = buscar_numero_largo(r"POLIZA SEG|P[óo]liza", texto_completo, 4)
-        if poliza and "-" in poliza: poliza = poliza.split("-")[-1].strip()
+        if poliza and "-" in poliza:
+            poliza = poliza.split("-")[-1].strip()
         datos["Poliza_Contrato"] = poliza
+
         doc = ""
         m_liq = re.search(r'Liquidaci[oó]n[\s\w]*?(?:Nro\.?|Prima)[\s:N°º]*(\d{7,})', texto_completo, re.IGNORECASE)
-        if m_liq: doc = m_liq.group(1)
-        if not doc: doc = buscar_numero_largo(r"Documento de Cobranza|Documento.*?LQ|LQ", texto_completo, 5)
+        if m_liq:
+            doc = m_liq.group(1)
+            
+        if not doc:
+            doc = buscar_numero_largo(r"Documento de Cobranza|Documento.*?LQ|LQ", texto_completo, 5)
+            
         datos["Documento"] = doc
+
         datos["Vigencia_Inicio"], datos["Vigencia_Fin"] = atrapar_fechas_vigencia(texto_completo, r"Vigencia de P[oó]liza|Vigencia")
+
         emision = atrapar_fecha_emision(texto_completo, r"Emisi[oó]n")
         if not emision:
             match_fecha = re.search(r'(\d{1,2})\s+de\s+([a-zA-Z]+)\s+(?:de|del)\s+(\d{4})', texto_completo, re.IGNORECASE)
@@ -280,41 +416,58 @@ def extraer_datos_pdf(ruta_archivo):
                 dia, mes, anio = match_fecha.groups()
                 emision = f"{int(dia):02d}/{MESES_TEXTO.get(mes.lower(), '01')}/{anio}"
         datos["Fecha_Emision"] = emision if emision else datos.get("Vigencia_Inicio", "")
+
         prima = ""
         m_prima_rimac = re.search(r'(?:Prima\s*Comercial\s*\+\s*IGV|Incluye\s*TCEA\s*e\s*IGV)[\s:S/.]*([\d]+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)', texto_completo, re.IGNORECASE)
-        if m_prima_rimac: prima = m_prima_rimac.group(1)
+        if m_prima_rimac:
+            prima = m_prima_rimac.group(1)
+
         if not prima:
             monto = atrapar_monto_cercano(r"TOTAL\s*A\s*PAGAR|Prima Comercial Total|IMPORTE TOTAL", texto_completo)
             prima = formatear_dolares(monto, texto_completo, "Prima Comercial|TOTAL|IMPORTE")
+
         datos["Prima_Total"] = prima
 
+    # ==========================================
+    # LA POSITIVA
+    # ==========================================
     elif "LA POSITIVA" in texto_upper or "POSITIVA" in texto_upper:
         datos["Ruc_DNI"] = "20605619453"
         datos["Poliza_Contrato"] = buscar_numero_largo(r"P[óo]liza", texto_completo, 4)
         datos["Documento"] = buscar_numero_largo(r"Proforma", texto_completo, 5)
+
         vig_ini = atrapar_fecha_emision(texto_completo, r"Vigencia[\s\-]*Inicio|Desde")
         vig_fin = atrapar_fecha_emision(texto_completo, r"T[eé]rmino|Hasta")
         if vig_ini and vig_fin:
             datos["Vigencia_Inicio"], datos["Vigencia_Fin"] = vig_ini, vig_fin
         else:
             datos["Vigencia_Inicio"], datos["Vigencia_Fin"] = atrapar_fechas_vigencia(texto_completo, r"Vigencia")
+
         match_fecha = re.search(r'(\d{1,2})\s+de\s+([a-zA-Z]+)\s+(?:de|del)\s+(\d{4})', texto_completo, re.IGNORECASE)
         if match_fecha:
             dia, mes, anio = match_fecha.groups()
             datos["Fecha_Emision"] = f"{int(dia):02d}/{MESES_TEXTO.get(mes.lower(), '01')}/{anio}"
+
         monto = atrapar_monto_cercano(r"Prima Comercial|TOTAL", texto_completo)
         datos["Prima_Total"] = formatear_dolares(monto, texto_completo, "Prima|TOTAL")
 
+    # ==========================================
+    # PLAN C: BUSQUEDA GLOBAL DE FECHAS FALTANTES
+    # ==========================================
     if not datos["Vigencia_Inicio"]:
         ini_alt = re.search(r'Desde\s*[:.-]?\s*(\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4})', texto_completo, re.IGNORECASE)
-        if ini_alt: datos["Vigencia_Inicio"] = limpiar_fecha(ini_alt.group(1))
+        if ini_alt:
+            datos["Vigencia_Inicio"] = limpiar_fecha(ini_alt.group(1))
+
     if not datos["Vigencia_Fin"]:
         fin_alt = re.search(r'(?:Hasta|al)\s*[:.-]?\s*(\d{2}\s*[/-]\s*\d{2}\s*[/-]\s*\d{4})', texto_completo, re.IGNORECASE)
-        if fin_alt: datos["Vigencia_Fin"] = limpiar_fecha(fin_alt.group(1))
+        if fin_alt:
+            datos["Vigencia_Fin"] = limpiar_fecha(fin_alt.group(1))
 
     for clave, valor in datos.items():
         if not valor or str(valor).strip() == "":
-            if clave == "Documento": datos[clave] = "No aplica"
+            if clave == "Documento":
+                datos[clave] = "No aplica"
 
     if "SANITAS" in texto_upper or "PROTECTA" in texto_upper or "CRECER" in texto_upper:
         datos["Fecha_pago"] = datos["Vigencia_Inicio"]
@@ -324,7 +477,7 @@ def extraer_datos_pdf(ruta_archivo):
     return datos
 
 # ==========================================
-# FORMATO EXCEL Y TRAMA MASIVA
+# FORMATO EXCEL Y TRAMA MASIVA (EN MODO API)
 # ==========================================
 def aplicar_formato_excel(ruta_excel):
     wb = load_workbook(ruta_excel)
@@ -381,7 +534,8 @@ def generar_trama_masiva(resultados, ruta_directorio):
 
     def string_a_fecha(fecha_str):
         if not fecha_str: return None
-        try: return datetime.strptime(fecha_str.replace('-', '/'), "%d/%m/%Y")
+        fecha_limpia = fecha_str.replace('-', '/')
+        try: return datetime.strptime(fecha_limpia, "%d/%m/%Y")
         except ValueError: return None
 
     fila = 2 
@@ -390,28 +544,49 @@ def generar_trama_masiva(resultados, ruta_directorio):
         
         doc_original = str(datos.get("Documento", ""))
         match_sctr = re.search(r'SCTR\s*-\s*(\d+)', doc_original, re.IGNORECASE)
-        ws[f'B{fila}'] = match_sctr.group(1) if match_sctr else doc_original
         
+        if match_sctr:
+            doc_limpio = match_sctr.group(1)
+        else:
+            doc_limpio = doc_original
+            
+        ws[f'B{fila}'] = doc_limpio
         ws[f'C{fila}'] = f'=IF(K{fila}<0, "DEVOLUCION", IF(K{fila}<60, "ENDOSO", "RENOVACION"))'
         ws[f'D{fila}'] = "CONTADO"
         
-        fechas_map = {'E': "Vigencia_Inicio", 'F': "Vigencia_Fin", 'G': "Fecha_Emision", 'O': "Fecha_pago"}
-        for col, key in fechas_map.items():
-            obj_fecha = string_a_fecha(datos.get(key, ""))
-            if obj_fecha:
-                ws[f'{col}{fila}'].value = obj_fecha
-                ws[f'{col}{fila}'].number_format = 'dd/mm/yyyy'
+        fechas_map = {
+            'E': datos.get("Vigencia_Inicio", ""),
+            'F': datos.get("Vigencia_Fin", ""),
+            'G': datos.get("Fecha_Emision", ""),
+            'O': datos.get("Fecha_pago", "")
+        }
 
+        for col, valor_txt in fechas_map.items():
+            celda = ws[f'{col}{fila}']
+            obj_fecha = string_a_fecha(valor_txt)
+            if obj_fecha:
+                celda.value = obj_fecha
+                celda.number_format = 'dd/mm/yyyy'
+
+        ws[f'H{fila}'] = f'=G{fila}'
+        ws[f'I{fila}'] = f'=G{fila}'
+        ws[f'N{fila}'] = f'=G{fila}+30'
+        
         for col_f in ['H', 'I', 'N']:
-            ws[f'{col_f}{fila}'] = f'=G{fila}' if col_f != 'N' else f'=G{fila}+30'
             ws[f'{col_f}{fila}'].number_format = 'dd/mm/yyyy'
         
         prima_str = str(datos.get("Prima_Total", "0")).replace("($)", "").replace(",", "").strip()
-        ws[f'K{fila}'] = float(prima_str) if prima_str else 0.0
+        try:
+            prima_num = float(prima_str)
+        except ValueError:
+            prima_num = 0.0
+            
+        ws[f'K{fila}'] = prima_num
         ws[f'J{fila}'] = f'=ROUND(K{fila}/1.18, 2)'
         ws[f'L{fila}'] = 1
         ws[f'M{fila}'] = f'=K{fila}/L{fila}'
         ws[f'P{fila}'] = f'=UPPER(TEXT(E{fila}, "MMMM"))'
+        
         fila += 1
 
     for col in ws.columns:
@@ -441,7 +616,6 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
     
     resultados = []
     
-    # Procesamos el lote de PDFs de forma secuencial y segura
     for file in archivos:
         ruta_archivo = os.path.join(ruta_temp_pdfs, file.filename)
         with open(ruta_archivo, "wb") as buffer:
@@ -455,12 +629,9 @@ async def procesar_pdfs_lote(archivos: List[UploadFile] = File(...)):
         finally:
             if os.path.exists(ruta_archivo):
                 os.remove(ruta_archivo)
-            
-            # <-- NUEVO: ELIMINA LA BASURA DE LA RAM DESPUÉS DE CADA PDF
             gc.collect()
 
     return {"status": "success", "mensaje": "Lote procesado", "datos": resultados}
-
 
 # ==========================================
 # ENDPOINT NIVEL 1: PROCESAMIENTO MASIVO POR ZIP
@@ -470,16 +641,13 @@ async def procesar_zip_masivo(archivo: UploadFile = File(...)):
     if not archivo.filename.endswith('.zip'):
         raise HTTPException(status_code=400, detail="El archivo debe ser un .zip")
 
-    # 1. Rutas temporales seguras en Render
     ruta_zip = f"/tmp/{archivo.filename}"
     carpeta_extraccion = "/tmp/pdfs_descomprimidos"
     
-    # Limpiamos la carpeta si existía de antes
     if os.path.exists(carpeta_extraccion):
         shutil.rmtree(carpeta_extraccion)
     os.makedirs(carpeta_extraccion, exist_ok=True)
 
-    # 2. Guardamos el ZIP y lo descomprimimos
     with open(ruta_zip, "wb") as buffer:
         shutil.copyfileobj(archivo.file, buffer)
 
@@ -491,7 +659,6 @@ async def procesar_zip_masivo(archivo: UploadFile = File(...)):
 
     resultados = []
 
-    # 3. Escaneamos la carpeta en busca de PDFs y los procesamos localmente
     for root, dirs, files in os.walk(carpeta_extraccion):
         for file in files:
             if file.lower().endswith('.pdf'):
@@ -502,16 +669,13 @@ async def procesar_zip_masivo(archivo: UploadFile = File(...)):
                 except Exception as e:
                     print(f"Error procesando {file}: {e}")
                 finally:
-                    # Obligatorio: Limpiar RAM después de cada PDF
                     gc.collect()
 
-    # 4. Limpieza de disco: Borramos el ZIP y los PDFs extraídos
     if os.path.exists(ruta_zip):
         os.remove(ruta_zip)
     if os.path.exists(carpeta_extraccion):
         shutil.rmtree(carpeta_extraccion)
 
-    # 5. Generar Excels Finales si hubo resultados
     if not resultados:
         raise HTTPException(status_code=400, detail="No se encontraron PDFs válidos dentro del ZIP")
 
@@ -527,7 +691,6 @@ async def procesar_zip_masivo(archivo: UploadFile = File(...)):
     generar_trama_masiva(resultados, carpeta_resultados)
 
     return {"status": "success", "mensaje": f"ZIP procesado. {len(resultados)} pólizas extraídas.", "datos": resultados}
-
 
 # ENDPOINT 2: ENSAMBLA TODOS LOS DATOS EN LOS EXCELS FINALES
 @app.post("/generar-excels-finales/")
