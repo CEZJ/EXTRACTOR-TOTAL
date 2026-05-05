@@ -106,7 +106,7 @@ def extraer_datos_pdf(ruta_archivo):
             texto = pagina.extract_text()
             if not texto or len(texto.strip()) < 20:
                 try:
-                    img = pagina.to_image(resolution=100).original 
+                    img = pagina.to_image(resolution=300).original 
                     img_np = np.array(img)
                     resultado, _ = lector_ocr(img_np)
                     if resultado:
