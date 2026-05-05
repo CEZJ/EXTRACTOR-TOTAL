@@ -243,8 +243,8 @@ export default function App() {
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent translate-y-[-100%] group-hover:translate-y-[100%] transition-transform duration-1000"></div>
                 <Activity className="w-12 h-12 text-cyan-600 mb-4 group-hover:text-cyan-400 group-hover:drop-shadow-[0_0_8px_rgba(34,211,238,0.8)] transition-all" />
                 <h3 className="text-sm font-bold tracking-widest text-cyan-200 mb-2">INSERTE ARCHIVOS DE DATOS</h3>
-                <p className="text-xs text-cyan-600/80 tracking-widest">FORMATO REQUERIDO: PDF</p>
-                <input type="file" multiple accept=".pdf" className="hidden" ref={fileInputRef} onChange={(e) => procesarArchivos(e.target.files)} />
+                <p className="text-xs text-cyan-600/80 tracking-widest">FORMATO REQUERIDO: PDF o ZIP </p>
+                <input type="file" multiple accept=".pdf,.zip,application/zip,application/x-zip-compressed" className="hidden" ref={fileInputRef} onChange={(e) => procesarArchivos(e.target.files)} />
               </div>
             )}
 
