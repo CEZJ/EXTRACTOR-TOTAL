@@ -34,8 +34,5 @@ Una vez procesada la información, el sistema consolida y exporta todos los regi
 * **openpyxl:** Manipulación y diseño dinámico de las hojas de cálculo en Excel.
 * **re (Regex):** Lógica matemática principal para la búsqueda de patrones de datos.
 
-## ⚙️ ¿Cómo usarlo?
-
-1. Instala las dependencias necesarias ejecutando en tu terminal:
    ```bash
    pip install pdfplumber pandas openpyxl easyocr numpy
